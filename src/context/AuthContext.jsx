@@ -77,16 +77,29 @@ export const AuthProvider = ({ children }) => {
         password: userData.password
       };
       
+      console.log('Sending API request to register user...');
       const response = await registerUserApi(formattedUserData);
+      
+      console.log('Registration API response:', response?.status, response?.data);
       
       if (response && response.data) {
         // Extract user and token data from response
         const user = response.data;
         const token = response.data.token;
         
+        if (!token) {
+          console.error('No token received in registration response');
+          throw new Error('Invalid response: No authentication token received');
+        }
+        
         // Update state with user data
         setCurrentUser(user);
         setIsAuthenticated(true);
+        
+        // Ensure localStorage is properly set
+        localStorage.setItem('token', token);
+        localStorage.setItem('isLoggedIn', 'true');
+        localStorage.setItem('user', JSON.stringify(user));
         
         console.log('Registration successful, user authenticated:', { email: user.email });
         return { success: true, user, token };
@@ -96,6 +109,21 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (error) {
       console.error("Registration error:", error);
+      
+      // Add detailed error logging
+      if (error.response) {
+        // The request was made and the server responded with a status code
+        // that falls out of the range of 2xx
+        console.error('Error response data:', error.response.data);
+        console.error('Error response status:', error.response.status);
+        console.error('Error response headers:', error.response.headers);
+      } else if (error.request) {
+        // The request was made but no response was received
+        console.error('Error request:', error.request);
+      } else {
+        // Something happened in setting up the request that triggered an Error
+        console.error('Error message:', error.message);
+      }
       
       // Set auth error based on response
       const errorMessage = error.response?.data?.message || 
@@ -107,7 +135,7 @@ export const AuthProvider = ({ children }) => {
       localStorage.removeItem("isLoggedIn");
       localStorage.removeItem("user");
       
-      throw new Error(errorMessage);
+      throw error;
     } finally {
       setLoading(false);
     }

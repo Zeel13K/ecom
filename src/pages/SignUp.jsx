@@ -193,6 +193,7 @@ const SignUp = () => {
     setIsSubmitting(true);
 
     try {
+      // Prepare user data for API submission
       const userData = {
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
@@ -206,24 +207,23 @@ const SignUp = () => {
         name: userData.name
       });
       
-      // Call the registerUser function from AuthContext
+      // Explicitly log the API_URL from environment
+      console.log('API URL:', import.meta.env.VITE_API_URL || 'http://localhost:5000/api');
+      
+      // Call the registerUser function from AuthContext to send data to backend
       const result = await registerUser(userData);
       
       console.log('Registration result:', result);
       
       if (result && result.success) {
-        // Show success message
-        setMessage({ 
-          type: 'success', 
-          text: 'Registration successful! Redirecting to home page...' 
-        });
-        
-        // Redirect after a short delay
-        setTimeout(() => {
-          const redirectUrl = getRedirectUrl();
-          navigate(redirectUrl);
-        }, 1500);
+        // Use the handleRegistrationSuccess function
+        handleRegistrationSuccess(result.user, result.token);
+      } else if (result && result.user && result.token) {
+        // Sometimes the result format might be different
+        // Direct success without the success flag
+        handleRegistrationSuccess(result.user, result.token);
       } else {
+        // Generic error if the result format is unexpected
         setMessage({ 
           type: 'error', 
           text: 'Registration failed. Please try again.' 
@@ -231,11 +231,30 @@ const SignUp = () => {
         setIsSubmitting(false);
       }
     } catch (error) {
-      console.error('Registration error:', error);
-      setMessage({ 
-        type: 'error', 
-        text: error.message || 'Registration failed. Please try again.' 
-      });
+      console.error('Registration error details:', error);
+      
+      // Special handling for different types of errors
+      if (error.message && error.message.includes('Network Error')) {
+        setMessage({ 
+          type: 'error', 
+          text: 'Cannot connect to server. Please check if the backend server is running.' 
+        });
+      } else if (error.message && error.message.includes('CORS')) {
+        setMessage({ 
+          type: 'error', 
+          text: 'CORS error: The server needs to be configured to accept requests from this application.' 
+        });
+      } else {
+        // Display appropriate error message from API response if available
+        const errorMessage = error.response?.data?.message || 
+                            error.message || 
+                            'Registration failed. Please try again.';
+        
+        setMessage({ 
+          type: 'error', 
+          text: errorMessage
+        });
+      }
       setIsSubmitting(false);
     }
   };
@@ -374,7 +393,12 @@ const SignUp = () => {
               className="auth-button"
               disabled={isSubmitting}
             >
-              {isSubmitting ? 'Creating Account...' : 'Create Account'}
+              {isSubmitting ? (
+                <>
+                  <i className="fas fa-spinner fa-spin" style={{ marginRight: '8px' }} />
+                  Creating Account...
+                </>
+              ) : 'Create Account'}
             </button>
             <div className="auth-links">
               <p>
