@@ -21,246 +21,195 @@ export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authError, setAuthError] = useState(null);
 
+  // Load user data from localStorage on initial render
   useEffect(() => {
     const loadUserData = async () => {
       try {
-        const tokenExpiration = localStorage.getItem("tokenExpiration");
-        const authToken = localStorage.getItem("authToken");
-        const rememberMe = localStorage.getItem("rememberMe") === "true";
+        const token = localStorage.getItem("token");
+        const isLoggedIn = localStorage.getItem("isLoggedIn") === "true";
+        const userData = JSON.parse(localStorage.getItem("user") || "null");
 
-        // Check if token is expired
-        if (tokenExpiration && !isTokenExpired(parseInt(tokenExpiration))) {
-          if (authToken) {
-            const user = await getUserProfileApi();
-            setCurrentUser(user.data);
-            setIsAuthenticated(true);
-            
-            // Refresh token expiration
-            const newExpiration = getTokenExpiration();
-            localStorage.setItem("tokenExpiration", newExpiration.toString());
-          }
+        console.log('AuthContext - Loading user data:', { 
+          hasToken: !!token, 
+          isLoggedIn, 
+          user: userData?._id
+        });
+
+        if (token && isLoggedIn && userData) {
+          console.log('Setting user as authenticated:', userData.email);
+          setCurrentUser(userData);
+          setIsAuthenticated(true);
         } else {
-          // Token is expired, clear authentication if not remembering
-          if (!rememberMe) {
-            setCurrentUser(null);
-            setIsAuthenticated(false);
-            localStorage.removeItem("authToken");
-            localStorage.removeItem("tokenExpiration");
-            localStorage.removeItem("user");
-          }
+          console.log('No valid authentication found, clearing auth state');
+          // Clear any existing auth data
+          setCurrentUser(null);
+          setIsAuthenticated(false);
+          localStorage.removeItem("token");
+          localStorage.removeItem("isLoggedIn");
+          localStorage.removeItem("user");
         }
       } catch (error) {
         console.error("Error loading user data:", error);
-        setCurrentUser(null);
-        setIsAuthenticated(false);
-        
-        // Clean up invalid tokens
-        if (error.response && error.response.status === 401) {
-          localStorage.removeItem("authToken");
-          localStorage.removeItem("tokenExpiration");
-          localStorage.removeItem("user");
-        }
+        setAuthError("Failed to load user data");
       } finally {
         setLoading(false);
       }
     };
 
     loadUserData();
-
-    // Set up interval to check token expiration
-    const checkTokenInterval = setInterval(() => {
-      const tokenExpiration = localStorage.getItem("tokenExpiration");
-      if (tokenExpiration && isTokenExpired(parseInt(tokenExpiration))) {
-        loadUserData();
-      }
-    }, 60000); // Check every minute
-
-    window.addEventListener("storage", loadUserData);
-    return () => {
-      window.removeEventListener("storage", loadUserData);
-      clearInterval(checkTokenInterval);
-    };
   }, []);
 
-  const registerUser = async (userData, rememberMe = true) => {
-    setAuthError(null);
+  const registerUser = async (userData) => {
     try {
-      // Format data to match backend expectations
-      const formattedData = {
-        name: `${userData.firstName} ${userData.lastName}`,
-        email: userData.email.trim().toLowerCase(),
+      setLoading(true);
+      setAuthError(null);
+      
+      console.log('Registering user with data:', { 
+        email: userData.email, 
+        firstName: userData.firstName, 
+        lastName: userData.lastName 
+      });
+      
+      // Make sure the userData has the expected format for the backend
+      const formattedUserData = {
+        name: userData.name || `${userData.firstName} ${userData.lastName}`,
+        email: userData.email,
         password: userData.password
       };
       
-      const response = await registerUserApi(formattedData);
-      const { token, ...user } = response.data;
-
-      // Set token expiration
-      const tokenExpiration = getTokenExpiration();
-      localStorage.setItem("tokenExpiration", tokenExpiration.toString());
-      localStorage.setItem("rememberMe", rememberMe.toString());
-      localStorage.setItem("user", JSON.stringify(user));
-      localStorage.setItem("authToken", token);
-
-      setCurrentUser(user);
-      setIsAuthenticated(true);
-      return { success: true, user };
-    } catch (error) {
-      console.error("Error registering user:", error);
+      const response = await registerUserApi(formattedUserData);
       
-      let errorMessage = "Registration failed";
-      
-      if (error.response && error.response.data) {
-        errorMessage = error.response.data.message || errorMessage;
+      if (response && response.data) {
+        // Extract user and token data from response
+        const user = response.data;
+        const token = response.data.token;
+        
+        // Update state with user data
+        setCurrentUser(user);
+        setIsAuthenticated(true);
+        
+        console.log('Registration successful, user authenticated:', { email: user.email });
+        return { success: true, user, token };
+      } else {
+        console.error('Invalid registration response:', response);
+        throw new Error('Invalid response from server during registration');
       }
+    } catch (error) {
+      console.error("Registration error:", error);
       
+      // Set auth error based on response
+      const errorMessage = error.response?.data?.message || 
+                          'Registration failed. Please try again.';
       setAuthError(errorMessage);
-      return { success: false, error: errorMessage };
+      
+      // Clean up any partial data
+      localStorage.removeItem("token");
+      localStorage.removeItem("isLoggedIn");
+      localStorage.removeItem("user");
+      
+      throw new Error(errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const loginUser = async (email, password, rememberMe = true) => {
-    setAuthError(null);
+  const loginUser = async (email, password) => {
     try {
-      // For development - handle direct login if in dev mode without backend
-      if (process.env.NODE_ENV === 'development') {
-        const userStr = localStorage.getItem('user');
-        if (userStr) {
-          try {
-            const user = JSON.parse(userStr);
-            
-            if (user.email && 
-                user.email.toLowerCase() === email.toLowerCase() && 
-                (!user.password || user.password === password)) {
-              
-              console.log('DEV MODE: Bypassing API - logging in with localStorage user');
-              
-              const fakeToken = 'dev-mode-token-' + Date.now();
-              const tokenExpiration = getTokenExpiration();
-              
-              const updatedUser = {
-                ...user,
-                password: password // Store password for dev use - NEVER do this in production!
-              };
-              
-              localStorage.setItem('user', JSON.stringify(updatedUser));
-              localStorage.setItem('authToken', fakeToken);
-              localStorage.setItem('tokenExpiration', tokenExpiration.toString());
-              localStorage.setItem('rememberMe', rememberMe.toString());
-              
-              setCurrentUser(updatedUser);
-              setIsAuthenticated(true);
-              return { success: true, user: updatedUser };
-            }
-          } catch (e) {
-            console.error('Error parsing user from localStorage:', e);
-          }
-        }
+      setLoading(true);
+      setAuthError(null);
+      
+      console.log('Logging in user:', { email });
+      
+      // First, clear any existing auth data
+      localStorage.removeItem("token");
+      localStorage.removeItem("isLoggedIn");
+      localStorage.removeItem("user");
+      
+      const credentials = { email, password };
+      const response = await loginUserApi(credentials);
+      
+      console.log('Login API response:', response);
+      
+      if (response && response.data) {
+        // Extract token and user data
+        const user = response.data;
+        const token = response.data.token;
+        
+        // Update state with user data
+        setCurrentUser(user);
+        setIsAuthenticated(true);
+        
+        console.log('Login successful, user authenticated:', { email: user.email });
+        return { success: true, user, token };
+      } else {
+        console.error('Invalid login response:', response);
+        throw new Error('Invalid response from server during login');
       }
-      
-      // Proceed with API login if not in dev mode or user not found in localStorage
-      const response = await loginUserApi({ 
-        email: email.trim().toLowerCase(), 
-        password 
-      });
-      
-      const { token, ...user } = response.data;
-
-      // Set token expiration
-      const tokenExpiration = getTokenExpiration();
-      localStorage.setItem("tokenExpiration", tokenExpiration.toString());
-      localStorage.setItem("rememberMe", rememberMe.toString());
-      localStorage.setItem("user", JSON.stringify(user));
-      localStorage.setItem("authToken", token);
-
-      setCurrentUser(user);
-      setIsAuthenticated(true);
-      return { success: true, user };
     } catch (error) {
-      console.error("Error logging in:", error);
+      console.error("Login error:", error);
       
-      let errorMessage = "Invalid email or password";
-      
-      if (error.response && error.response.data) {
-        errorMessage = error.response.data.message || errorMessage;
-      }
-      
+      // Set auth error based on response
+      const errorMessage = error.response?.data?.message || 
+                          error.message || 
+                          'Login failed. Please check your credentials and try again.';
       setAuthError(errorMessage);
-      return { success: false, error: errorMessage };
+      
+      // Clean up any partial data
+      localStorage.removeItem("token");
+      localStorage.removeItem("isLoggedIn");
+      localStorage.removeItem("user");
+      
+      throw new Error(errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
 
   const logoutUser = () => {
-    try {
-      setCurrentUser(null);
-      setIsAuthenticated(false);
-      setAuthError(null);
-
-      localStorage.removeItem("user");
-      localStorage.removeItem("authToken");
-      localStorage.removeItem("tokenExpiration");
-      localStorage.removeItem("rememberMe");
-      return true;
-    } catch (error) {
-      console.error("Error logging out:", error);
-      return false;
-    }
+    // Clear all auth data
+    localStorage.removeItem("token");
+    localStorage.removeItem("isLoggedIn");
+    localStorage.removeItem("user");
+    
+    // Update state
+    setCurrentUser(null);
+    setIsAuthenticated(false);
+    setAuthError(null);
+    
+    console.log('User logged out successfully');
   };
 
   const updateUserProfile = async (updatedData) => {
-    if (currentUser && isAuthenticated) {
-      try {
-        const response = await updateUserProfileApi(updatedData);
-        const updatedUser = response.data;
-        
-        localStorage.setItem("user", JSON.stringify(updatedUser));
-        setCurrentUser(updatedUser);
-        return { success: true, user: updatedUser };
-      } catch (error) {
-        console.error("Error updating profile:", error);
-        
-        let errorMessage = "Failed to update profile";
-        
-        if (error.response && error.response.data) {
-          errorMessage = error.response.data.message || errorMessage;
-        }
-        
-        return { success: false, error: errorMessage };
-      }
+    if (!isAuthenticated || !currentUser) {
+      return { success: false, error: "Not authenticated" };
     }
-    return { success: false, error: "Not authenticated" };
-  };
-
-  // Add order to user's order history
-  const addOrder = (orderData) => {
-    if (!currentUser) return false;
     
     try {
-      // Get existing orders from localStorage or initialize empty array
-      const existingOrders = JSON.parse(localStorage.getItem('userOrders') || '[]');
+      setLoading(true);
+      const response = await updateUserProfileApi(updatedData);
       
-      // Add new order to the array
-      const updatedOrders = [orderData, ...existingOrders];
-      
-      // Save updated orders back to localStorage
-      localStorage.setItem('userOrders', JSON.stringify(updatedOrders));
-      
-      // Update the user object with the order without replacing orders that might have been fetched from API
-      const updatedUser = {
-        ...currentUser,
-        orders: currentUser.orders 
-          ? [orderData, ...currentUser.orders] 
-          : [orderData]
-      };
-      
-      // Update state and localStorage
-      setCurrentUser(updatedUser);
-      localStorage.setItem("user", JSON.stringify(updatedUser));
-      
-      return true;
+      if (response && response.data) {
+        const updatedUser = response.data;
+        
+        // Update user data in localStorage
+        localStorage.setItem("user", JSON.stringify(updatedUser));
+        
+        // Update state
+        setCurrentUser(updatedUser);
+        
+        return { success: true, user: updatedUser };
+      } else {
+        throw new Error('Invalid response from server');
+      }
     } catch (error) {
-      console.error("Error adding order to history:", error);
-      return false;
+      console.error("Error updating profile:", error);
+      
+      const errorMessage = error.response?.data?.message || 
+                         'Failed to update profile. Please try again.';
+      
+      return { success: false, error: errorMessage };
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -279,8 +228,7 @@ export const AuthProvider = ({ children }) => {
         loginUser,
         logoutUser,
         updateUserProfile,
-        addOrder,
-        clearAuthError,
+        clearAuthError
       }}
     >
       {children}

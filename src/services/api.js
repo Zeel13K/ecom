@@ -1,9 +1,7 @@
 import axios from 'axios';
 
-// Check which environment we're in and set the appropriate URL
-const API_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://your-production-api.com/api' 
-  : 'http://localhost:5000/api';
+// Check environment variables first, fallback to hardcoded values
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 console.log('API URL set to:', API_URL);
 
@@ -19,29 +17,46 @@ const api = axios.create({
 // Request interceptor to add the auth token to requests
 api.interceptors.request.use(
   config => {
+    // Get tokens from localStorage
+    const token = localStorage.getItem('token');
     const adminToken = localStorage.getItem('adminToken');
-    const userToken = localStorage.getItem('token');
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
     
-    // Check if the request is to an admin endpoint
-    const isAdminEndpoint = config.url.includes('/admin') || 
-                           (config.url.includes('/orders') && config.method !== 'post');
+    // Try to get user data from localStorage
+    let user = null;
+    try {
+      user = JSON.parse(localStorage.getItem('user') || 'null');
+    } catch (e) {
+      console.error('Error parsing user from localStorage:', e);
+    }
     
-    // For admin endpoints, check both admin token and user.isAdmin
+    // Determine if this is an admin endpoint or special handling needed
+    // Admin endpoints are those in the /admin path or GET requests to /orders
+    // POST to /orders is a user endpoint for creating orders
+    const isAdminEndpoint = config.url && (
+      config.url.includes('/admin') || 
+      (config.url.includes('/orders') && config.method !== 'post')
+    );
+    
+    // Log the request and authentication status
+    console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`, {
+      isAdminEndpoint,
+      hasToken: !!token,
+      hasAdminToken: !!adminToken,
+      isUserAdmin: user?.isAdmin
+    });
+    
+    // For admin endpoints, check if user is admin
     if (isAdminEndpoint) {
-      if (adminToken && user.isAdmin) {
-        console.log('Adding admin token to request');
-        config.headers.Authorization = `Bearer ${adminToken}`;
+      if (user?.isAdmin && (adminToken || token)) {
+        console.log('Adding admin authorization to request');
+        config.headers.Authorization = `Bearer ${adminToken || token}`;
       }
+    } else if (token) {
+      // For user endpoints including creating orders, add user token
+      console.log('Adding user authorization to request');
+      config.headers.Authorization = `Bearer ${token}`;
     } else {
-      // For user endpoints, first try user token, then fall back to admin token if user is admin
-      if (userToken) {
-        console.log('Adding user token to request');
-        config.headers.Authorization = `Bearer ${userToken}`;
-      } else if (user.isAdmin && adminToken) {
-        console.log('Adding admin token for admin user');
-        config.headers.Authorization = `Bearer ${adminToken}`;
-      }
+      console.warn('No authentication token available for request:', config.url);
     }
     
     return config;
@@ -62,47 +77,114 @@ api.interceptors.response.use(
       console.error('API Error Response:', {
         status: error.response.status,
         data: error.response.data,
-        url: error.config.url
+        url: error.config?.url
       });
       
       // Handle 401 Unauthorized errors
       if (error.response.status === 401) {
         // Clear all auth tokens
         localStorage.removeItem('token');
+        localStorage.removeItem('adminToken');
         localStorage.removeItem('isLoggedIn');
+        localStorage.removeItem('adminLoggedIn');
         localStorage.removeItem('user');
         
         // Redirect to appropriate login page
-        const isAdminEndpoint = error.config.url.includes('/admin');
+        const isAdminEndpoint = error.config?.url?.includes('/admin');
         window.location.href = isAdminEndpoint ? '/admin/login' : '/login';
       }
+    } else {
+      console.error('API Network Error:', error.message);
     }
     return Promise.reject(error);
   }
 );
 
-// Debug helper to check if token exists
-const checkAuthToken = () => {
-  const token = localStorage.getItem('authToken');
-  if (token) {
-    console.log('Auth token exists:', token.substring(0, 15) + '...');
-    return true;
-  } else {
-    console.log('No auth token found');
-    return false;
+// Development fallback helpers
+const isDevelopment = process.env.NODE_ENV === 'development';
+
+// In development mode, provide test users
+const testUsers = isDevelopment ? [
+  {
+    _id: 'test-user-1',
+    email: 'user@example.com',
+    password: 'password123',
+    name: 'Test User',
+    firstName: 'Test',
+    lastName: 'User',
+    isAdmin: false
+  },
+  {
+    _id: 'test-admin-1',
+    email: 'admin@example.com',
+    password: 'admin123',
+    name: 'Test Admin',
+    firstName: 'Test',
+    lastName: 'Admin',
+    isAdmin: true
+  }
+] : [];
+
+// Development Helper for debugging registered users
+const checkRegisteredUsers = () => {
+  if (isDevelopment) {
+    try {
+      const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+      
+      if (registeredUsers.length === 0) {
+        console.log('No registered users found in localStorage');
+        return;
+      }
+      
+      console.log(`Found ${registeredUsers.length} registered users in localStorage:`);
+      registeredUsers.forEach((user, index) => {
+        console.log(`${index + 1}. ${user.email} (${user.name || user.firstName + ' ' + user.lastName})`);
+      });
+    } catch (error) {
+      console.error('Error checking registered users:', error);
+    }
   }
 };
+
+// Execute during initialization in development mode
+if (isDevelopment) {
+  // Log the test users available
+  console.log('Test users available for development:', testUsers.map(u => ({
+    email: u.email,
+    password: u.password,
+    isAdmin: u.isAdmin
+  })));
+  
+  // Check registered users
+  checkRegisteredUsers();
+}
 
 // User API functions
 export const registerUser = async (userData) => {
   try {
-    const response = await api.post('/users', userData);
+    console.log('Registering user with data:', { 
+      email: userData.email, 
+      name: userData.name || `${userData.firstName} ${userData.lastName}`
+    });
     
-    if (response.data && response.data.token) {
-      // Store user data and token
+    // Prepare user data in expected format for backend
+    const userToRegister = {
+      name: userData.name || `${userData.firstName} ${userData.lastName}`,
+      email: userData.email,
+      password: userData.password
+    };
+    
+    // Make the real API call
+    const response = await api.post('/users', userToRegister);
+    
+    // Check if response is valid
+    if (response?.data?.token) {
+      console.log('Registration successful, setting auth data');
+      
+      // Store token and user data in localStorage
       localStorage.setItem('token', response.data.token);
       localStorage.setItem('isLoggedIn', 'true');
-      localStorage.setItem('user', JSON.stringify(response.data.user));
+      localStorage.setItem('user', JSON.stringify(response.data));
     }
     
     return response;
@@ -114,80 +196,258 @@ export const registerUser = async (userData) => {
 
 export const loginUser = async (credentials) => {
   try {
-    console.log('Attempting login with credentials:', { email: credentials.email });
+    console.log('Attempting login with:', { email: credentials.email });
     
-    // For development mode - allow test user login
-    if (process.env.NODE_ENV === 'development' && 
-        credentials.email === 'test@example.com' && 
-        credentials.password === 'test123') {
-      console.log('DEV MODE: Using test user login');
-      
-      const testUserData = {
-        _id: 'test-user-id',
-        name: 'Test User',
-        email: credentials.email,
-        isAdmin: false,
-        token: 'test-token-' + Date.now()
-      };
-      
-      // Store test user data
-      localStorage.setItem('token', testUserData.token);
-      localStorage.setItem('isLoggedIn', 'true');
-      localStorage.setItem('user', JSON.stringify(testUserData));
-      
-      return {
-        data: {
-          success: true,
-          token: testUserData.token,
-          user: testUserData
-        }
-      };
-    }
-    
-    // Make the actual API call
+    // Make the API call 
     const response = await api.post('/users/login', credentials);
     
-    if (response.data && response.data.token) {
-      // Store user data and token
+    // Check if response contains token and user data
+    if (response?.data?.token) {
+      console.log('Login successful, setting auth data');
+      
+      // Store auth data in localStorage
       localStorage.setItem('token', response.data.token);
       localStorage.setItem('isLoggedIn', 'true');
-      localStorage.setItem('user', JSON.stringify(response.data.user));
-      
-      // If user is admin, also set admin token
-      if (response.data.user.isAdmin) {
-        localStorage.setItem('adminToken', response.data.token);
-        localStorage.setItem('adminLoggedIn', 'true');
-        localStorage.setItem('adminEmail', response.data.user.email);
-      }
-      
-      console.log('Login successful:', {
-        isAdmin: response.data.user.isAdmin,
-        email: response.data.user.email
-      });
-    } else {
-      console.error('Invalid response format:', response.data);
-      throw new Error('Invalid response from server');
+      localStorage.setItem('user', JSON.stringify(response.data));
     }
     
     return response;
   } catch (error) {
     console.error('Login error:', error.response || error);
-    
-    // Handle specific error cases
-    if (error.response) {
-      if (error.response.status === 401) {
-        throw new Error('Invalid email or password');
-      } else if (error.response.status === 404) {
-        throw new Error('User not found');
-      }
-    }
-    
     throw error;
   }
 };
 
-export const getUserProfile = () => api.get('/users/profile');
+export const getUserProfile = async () => {
+  if (isDevelopment) {
+    // In dev mode, return user from localStorage
+    const user = localStorage.getItem('user');
+    if (user) {
+      return { data: JSON.parse(user) };
+    }
+    return Promise.reject({
+      response: { status: 401, data: { message: 'Not authenticated' } }
+    });
+  }
+  return api.get('/users/profile');
+};
+
+export const getMyOrders = async () => {
+  try {
+    console.log('Fetching user orders...');
+    
+    // Check if user is authenticated
+    const token = localStorage.getItem('token');
+    const user = JSON.parse(localStorage.getItem('user') || 'null');
+    
+    console.log('Authentication status:', { 
+      hasToken: !!token, 
+      hasUser: !!user,
+      userId: user?._id
+    });
+    
+    if (!token || !user) {
+      console.error('No authentication data available for fetching orders');
+      throw new Error('Authentication required to fetch orders');
+    }
+    
+    // Add timestamp to prevent caching
+    const timestamp = Date.now();
+    
+    // Try to fetch from the real API
+    try {
+      const url = `/orders/myorders?_t=${timestamp}`;
+      console.log(`Making API request to ${url}`);
+      
+      const response = await api.get(url);
+      console.log('Orders API response:', response);
+      return response;
+    } catch (apiError) {
+      console.error('Error fetching user orders from API:', apiError);
+      
+      // In development mode, provide fallback to localStorage
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Using development fallback for orders');
+        
+        // Get user orders from localStorage
+        try {
+          const allOrders = JSON.parse(localStorage.getItem('orders') || '[]');
+          
+          // Ensure we have a valid user ID
+          if (!user._id) {
+            console.warn('No user ID found in localStorage');
+            return { data: [] };
+          }
+          
+          // Filter orders by user ID
+          const userOrders = allOrders.filter(order => order.user === user._id);
+          console.log(`Found ${userOrders.length} orders for user in localStorage:`, userOrders);
+          
+          // If no orders found and this is development, create some test orders
+          if (userOrders.length === 0) {
+            console.log('No orders found for user, creating test orders in development mode');
+            const testOrders = Array(3).fill().map((_, i) => ({
+              _id: `mock-order-${Date.now()}-${i}`,
+              user: user._id,
+              orderItems: [
+                {
+                  name: 'Wireless Headphones',
+                  quantity: 1,
+                  image: 'https://fakestoreapi.com/img/81fPKd-2AYL._AC_SL1500_.jpg',
+                  price: 99.99,
+                  product: 'mock-1'
+                },
+                {
+                  name: 'Smart Watch',
+                  quantity: 2,
+                  image: 'https://fakestoreapi.com/img/71pWzhdJNwL._AC_UL640_QL65_ML3_.jpg',
+                  price: 199.99,
+                  product: 'mock-2'
+                }
+              ],
+              shippingAddress: {
+                address: '123 Main St',
+                city: 'Anytown',
+                postalCode: '12345',
+                country: 'USA'
+              },
+              paymentMethod: 'Credit Card',
+              paymentResult: {
+                id: `pay-${Date.now()}-${i}`,
+                status: 'completed',
+                update_time: new Date().toISOString(),
+                email_address: user.email
+              },
+              taxPrice: 30.00,
+              shippingPrice: 10.00,
+              totalPrice: 509.98,
+              isPaid: true,
+              paidAt: new Date().toISOString(),
+              status: ['processing', 'shipped', 'delivered'][i % 3],
+              createdAt: new Date(Date.now() - i * 86400000).toISOString(),
+              updatedAt: new Date().toISOString()
+            }));
+            
+            // Save the test orders to localStorage
+            const allOrdersUpdated = [...testOrders, ...allOrders];
+            localStorage.setItem('orders', JSON.stringify(allOrdersUpdated));
+            
+            console.log('Created test orders for development:', testOrders);
+            return { data: testOrders };
+          }
+          
+          return { data: userOrders };
+        } catch (storageError) {
+          console.error('Error reading from localStorage:', storageError);
+          throw new Error('Failed to load orders from storage: ' + storageError.message);
+        }
+      }
+      
+      // In production, just throw the error
+      throw apiError;
+    }
+  } catch (error) {
+    console.error('Error in getMyOrders:', error);
+    throw error;
+  }
+};
+
+// Export all the other functions
 export const updateUserProfile = (userData) => api.put('/users/profile', userData);
+
+// Admin login function 
+export const adminLogin = async (credentials) => {
+  try {
+    console.log('Attempting admin login with:', { email: credentials.email });
+    
+    // For development mode - simulate admin login
+    if (isDevelopment) {
+      console.log('DEV MODE: Simulating admin login');
+      
+      // Find admin user in test data
+      const adminUser = testUsers.find(u => 
+        u.email === credentials.email && 
+        u.password === credentials.password &&
+        u.isAdmin === true
+      );
+      
+      console.log('Admin user found:', adminUser ? 'Yes' : 'No');
+      
+      if (adminUser) {
+        // Generate admin token with prefix for easy identification
+        const adminToken = 'dev-admin-token-' + Date.now();
+        
+        // Create user object without password
+        const safeUser = { ...adminUser };
+        delete safeUser.password;
+        
+        console.log('DEV MODE: Creating admin session with token:', adminToken.substring(0, 15) + '...');
+        
+        // For development, manually set localStorage items
+        localStorage.setItem('user', JSON.stringify(safeUser));
+        localStorage.setItem('adminToken', adminToken);
+        localStorage.setItem('token', adminToken); // Also set as regular token for API interceptors
+        localStorage.setItem('isLoggedIn', 'true');
+        localStorage.setItem('adminLoggedIn', 'true');
+        
+        // Return simulated response
+        return {
+          data: {
+            success: true,
+            token: adminToken,
+            user: safeUser
+          }
+        };
+      } else {
+        // For debugging, show all available test users
+        console.log('Available test users:', testUsers.map(u => ({ 
+          email: u.email, 
+          password: u.password, 
+          isAdmin: u.isAdmin 
+        })));
+        
+        // Simulate authentication failure
+        return Promise.reject({
+          response: {
+            status: 401,
+            data: { message: 'Invalid admin credentials or not authorized as admin' }
+          }
+        });
+      }
+    }
+    
+    // For production, use the same endpoint but store token differently
+    const response = await api.post('/users/login', credentials);
+    
+    // Verify the user is admin
+    if (response?.data?.user?.isAdmin) {
+      console.log('Admin login successful:', response.data);
+      
+      // Store the token as adminToken and set adminLoggedIn flag
+      localStorage.setItem('adminToken', response.data.token);
+      localStorage.setItem('token', response.data.token); // Also set as regular token
+      localStorage.setItem('isLoggedIn', 'true');
+      localStorage.setItem('adminLoggedIn', 'true');
+      localStorage.setItem('user', JSON.stringify(response.data.user));
+      
+      return response;
+    } else {
+      // User is not an admin
+      console.error('User is not an admin:', response.data.user);
+      
+      return Promise.reject({
+        response: {
+          status: 403,
+          data: { message: 'User is not authorized as admin' }
+        }
+      });
+    }
+  } catch (error) {
+    console.error('Admin login error:', error.response || error);
+    throw error;
+  }
+};
+
 export const forgotPassword = (email, verifyOnly = false) => {
   console.log(`${verifyOnly ? 'Verifying email' : 'Sending forgot password request for email'}: ${email}`);
   
@@ -359,15 +619,71 @@ export const submitContactForm = (formData) => {
 // Product API functions
 export const getProducts = async () => {
   try {
-    const response = await api.get('/products');
-    return response;
+    // Try FakeStore API first
+    console.log('Fetching products from FakeStore API...');
+    try {
+      const fakeStoreResponse = await axios.get('https://fakestoreapi.com/products');
+      console.log('FakeStore API Response:', fakeStoreResponse);
+      
+      if (fakeStoreResponse.data && Array.isArray(fakeStoreResponse.data)) {
+        // Transform FakeStore API data to match our expected format
+        const transformedProducts = fakeStoreResponse.data.map(product => ({
+          _id: product.id.toString(),
+          name: product.title,
+          title: product.title,
+          price: product.price,
+          description: product.description,
+          category: product.category,
+          image: product.image
+        }));
+        
+        return { data: transformedProducts };
+      }
+    } catch (fakeStoreError) {
+      console.error('FakeStore API failed, falling back to backend:', fakeStoreError);
+    }
+    
+    // Fallback to our backend API
+    try {
+      const response = await api.get('/products');
+      return response;
+    } catch (backendError) {
+      console.error('Backend API failed, using mock data:', backendError);
+      throw backendError;
+    }
   } catch (error) {
     console.error('Error fetching products:', error);
-    // For development, return mock data if API fails
+    // For development, return mock data if all APIs fail
     if (process.env.NODE_ENV === 'development') {
       return {
         data: [
-          // ... your mock products data ...
+          {
+            _id: 'mock-1',
+            name: 'Wireless Headphones',
+            title: 'Wireless Headphones',
+            price: 99.99,
+            category: 'electronics',
+            description: 'High-quality wireless headphones with noise cancellation',
+            image: 'https://fakestoreapi.com/img/81fPKd-2AYL._AC_SL1500_.jpg'
+          },
+          {
+            _id: 'mock-2',
+            name: 'Smart Watch',
+            title: 'Smart Watch',
+            price: 199.99,
+            category: 'electronics',
+            description: 'Advanced smartwatch with fitness tracking and notifications',
+            image: 'https://fakestoreapi.com/img/71pWzhdJNwL._AC_UL640_QL65_ML3_.jpg'
+          },
+          {
+            _id: 'mock-3',
+            name: 'Running Shoes',
+            title: 'Running Shoes',
+            price: 79.99,
+            category: 'clothing',
+            description: 'Comfortable running shoes with excellent support',
+            image: 'https://fakestoreapi.com/img/71-3HjGNDUL._AC_SY879._SX._UX._SY._UY_.jpg'
+          }
         ]
       };
     }
@@ -434,35 +750,90 @@ export const getOrders = async ({ page = 1, status = '' } = {}) => {
   }
 };
 
-export const getMyOrders = async () => {
+// Get order by ID
+export const getOrderById = async (id) => {
   try {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      throw new Error('Please log in to view orders');
-    }
-    
-    const response = await api.get('/orders/myorders');
+    // Add timestamp to prevent caching
+    const timestamp = Date.now();
+    const response = await api.get(`/orders/${id}?_t=${timestamp}`);
     return response;
   } catch (error) {
-    console.error('Error fetching user orders:', error);
+    console.error('Error fetching order details:', error);
     throw error;
   }
 };
-export const getOrderById = (id) => api.get(`/orders/${id}`);
+
+// Export other necessary API functions
 export const createOrder = async (orderData) => {
   try {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      throw new Error('Please log in to place an order');
+    console.log('API: Creating order with data:', orderData);
+    
+    // For development - include fallback if API server is not available
+    if (isDevelopment) {
+      try {
+        // First try to make the real API call
+        const response = await api.post('/orders', orderData);
+        console.log('API: Order created successfully via API');
+        return response;
+      } catch (apiError) {
+        // If API call fails in development, create a mock order
+        console.warn('API: Order creation API call failed, using development fallback:', apiError.message);
+        
+        // Generate mock order data
+        const mockOrderId = 'dev-order-' + Date.now();
+        const mockOrder = {
+          _id: mockOrderId,
+          orderItems: orderData.orderItems,
+          shippingAddress: orderData.shippingAddress,
+          paymentMethod: orderData.paymentMethod,
+          itemsPrice: orderData.itemsPrice,
+          taxPrice: orderData.taxPrice,
+          shippingPrice: orderData.shippingPrice,
+          totalPrice: orderData.totalPrice,
+          user: JSON.parse(localStorage.getItem('user') || '{}')._id || 'dev-user',
+          isPaid: false,
+          isDelivered: false,
+          status: 'processing',
+          createdAt: new Date().toISOString()
+        };
+        
+        // Save to localStorage for development testing
+        try {
+          // Get existing orders or initialize empty array
+          const existingOrders = JSON.parse(localStorage.getItem('orders') || '[]');
+          const updatedOrders = [mockOrder, ...existingOrders];
+          localStorage.setItem('orders', JSON.stringify(updatedOrders));
+          console.log('API: Mock order saved to localStorage:', mockOrderId);
+        } catch (storageError) {
+          console.error('API: Error saving mock order to localStorage:', storageError);
+        }
+        
+        // Return as if it was a successful API response
+        return { data: mockOrder };
+      }
     }
     
+    // For production, just make the API call
     const response = await api.post('/orders', orderData);
     return response;
   } catch (error) {
-    console.error('Error creating order:', error);
+    console.error('API: Error creating order:', error.message);
+    
+    // Add detailed error information
+    const errorDetails = {
+      message: error.message
+    };
+    
+    if (error.response) {
+      errorDetails.status = error.response.status;
+      errorDetails.data = error.response.data;
+    }
+    
+    console.error('API: Order creation error details:', errorDetails);
     throw error;
   }
 };
+
 export const updateOrderToPaid = (id, paymentResult) => api.put(`/orders/${id}/pay`, paymentResult);
 export const updateOrderStatus = async (id, status) => {
   try {
@@ -473,47 +844,6 @@ export const updateOrderStatus = async (id, status) => {
     }
 
     const response = await api.put(`/orders/${id}/status`, { status: status.toLowerCase() });
-    
-    // For development mode - allow fallback to localStorage
-    if (process.env.NODE_ENV === 'development' && !response.data.success) {
-      console.log('API update failed, falling back to localStorage');
-      
-      const userData = JSON.parse(localStorage.getItem('user') || '{}');
-      
-      if (userData.orders) {
-        // Update the order status and add timestamp
-        const updatedOrders = userData.orders.map(order => {
-          if (order.id === id || order._id === id) {
-            return { 
-              ...order, 
-              status: status.toLowerCase(),
-              statusUpdatedAt: new Date().toISOString(),
-              statusHistory: [
-                ...(order.statusHistory || []),
-                {
-                  status: status.toLowerCase(),
-                  timestamp: new Date().toISOString()
-                }
-              ]
-            };
-          }
-          return order;
-        });
-        
-        // Update localStorage
-        const updatedUserData = { ...userData, orders: updatedOrders };
-        localStorage.setItem('user', JSON.stringify(updatedUserData));
-        
-        return {
-          data: {
-            success: true,
-            message: 'Order status updated in localStorage',
-            order: updatedOrders.find(o => o.id === id || o._id === id)
-          }
-        };
-      }
-    }
-    
     return response;
   } catch (error) {
     console.error('Error updating order status:', error);

@@ -127,7 +127,7 @@ const Checkout = () => {
     try {
       // Send order to API
       console.log("Current user:", currentUser);
-      console.log("Auth token:", localStorage.getItem('authToken'));
+      console.log("Auth token:", localStorage.getItem('token'));
       console.log("Submitting order data:", orderData);
       
       const createdOrder = await createOrder(orderData);
@@ -293,22 +293,26 @@ const Checkout = () => {
   const getProductImage = (product) => {
     // Use the direct API image URL if available
     if (product.image) {
+      // If image is a relative path, add API URL prefix
+      if (!product.image.startsWith('http') && !product.image.startsWith('/')) {
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+        return `${apiUrl}/${product.image}`;
+      }
       return product.image;
     }
+    
+    // Try to get image from product reference if available
+    if (product.product && product.product.image) {
+      return product.product.image;
+    }
+    
     // Fallback to local images if available
     if (product.localImage) {
       return product.localImage;
     }
-    // Last resort fallback - use category-based placeholders
-    if (product.category?.includes('clothing')) {
-      return 'https://via.placeholder.com/100x100?text=Clothing';
-    } else if (product.category?.includes('jewelery') || product.category?.includes('jewelry')) {
-      return 'https://via.placeholder.com/100x100?text=Jewelry';
-    } else if (product.category?.includes('electronics')) {
-      return 'https://via.placeholder.com/100x100?text=Electronics';
-    } else {
-      return 'https://via.placeholder.com/100x100?text=Product';
-    }
+    
+    // Last resort fallback - use placeholder
+    return '/placeholder.png';
   };
 
   return (

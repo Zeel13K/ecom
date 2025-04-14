@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
+import { getProducts } from '../services/api'; // Import our API service
 import '../styles/Shop.css';
 import Header from '../components/Header';
+import ProductCard from '../components/ProductCard';
 
 const Shop = () => {
   const { cart, addToCart, incrementQuantity, decrementQuantity } = useCart();
@@ -12,111 +14,104 @@ const Shop = () => {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [refresh, setRefresh] = useState(0); // Add refresh state to trigger refetching
 
-  // Fetch all products from the API
-  const getAllProducts = async () => {
+  // Fetch products using our API service
+  const fetchProducts = async () => {
     try {
-      const response = await fetch('https://fakestoreapi.com/products');
-      if (!response.ok) throw new Error('Network response was not ok');
-      const data = await response.json();
-      
-      // Return data with original image URLs - we'll handle proxying at the component level
-      return data;
-    } catch (error) {
-      console.error('Error fetching products:', error);
-      setError('Failed to load products. Please try again later.');
-      return [];
-    }
-  };
-
-  // Fetch products by category
-  const getProductsByCategory = async (category) => {
-    try {
-      const response = await fetch(`https://fakestoreapi.com/products/category/${category}`);
-      if (!response.ok) throw new Error('Network response was not ok');
-      const data = await response.json();
-      
-      // Return data with original image URLs - we'll handle proxying at the component level
-      return data;
-    } catch (error) {
-      console.error('Error fetching products by category:', error);
-      setError('Failed to load category products. Please try again later.');
-      return [];
-    }
-  };
-
-  // Fetch categories from the API
-  const getCategories = async () => {
-    try {
-      const response = await fetch('https://fakestoreapi.com/products/categories');
-      if (!response.ok) throw new Error('Network response was not ok');
-      const data = await response.json();
-      return data;
-    } catch (error) {
-      console.error('Error fetching categories:', error);
-      return [];
-    }
-  };
-
-  // Initialize the page data
-  useEffect(() => {
-    const initializeData = async () => {
       setLoading(true);
-      try {
-        // Get all products first
-        const productsData = await getAllProducts();
-        setProducts(productsData);
-        setFilteredProducts(productsData);
+      console.log('Fetching products...');
+      const response = await getProducts();
+      
+      console.log('API Response:', response);
+      
+      if (response && response.data) {
+        console.log('Products fetched successfully:', response.data);
         
-        // Get categories
-        const categoriesData = await getCategories();
-        setCategories(categoriesData);
-      } catch (error) {
-        console.error('Error initializing data:', error);
-        setError('Failed to load data. Please try again later.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    initializeData();
-  }, []);
-
-  // Handle category change
-  const handleCategoryChange = async (category) => {
-    setSelectedCategory(category);
-    setLoading(true);
-    try {
-      let filteredData;
-      if (category === 'all') {
-        filteredData = await getAllProducts();
+        // Handle both array and object responses
+        const productsArray = Array.isArray(response.data) 
+          ? response.data 
+          : response.data.products || [];
+          
+        // Make sure we have valid products with required fields
+        const validProducts = productsArray.filter(p => p && (p.name || p.title));
+        
+        if (validProducts.length === 0) {
+          console.warn('No valid products found in response');
+          setError('No products available at this time.');
+        } else {
+          // Extract unique categories from products
+          const uniqueCategories = [...new Set(validProducts.map(product => 
+            product.category || 'uncategorized'
+          ))];
+          
+          setProducts(validProducts);
+          setFilteredProducts(validProducts);
+          setCategories(uniqueCategories);
+          setError(null);
+        }
       } else {
-        filteredData = await getProductsByCategory(category);
+        console.error('Invalid response format:', response);
+        setError('Failed to load products. Please try again later.');
       }
-      setFilteredProducts(filteredData);
-    } catch (error) {
-      console.error('Error changing category:', error);
-      setError('Failed to load category. Please try again later.');
+    } catch (err) {
+      console.error('Error fetching products:', err);
+      setError('Failed to load products. Please try again later.');
     } finally {
       setLoading(false);
     }
   };
 
+  // Initialize the page data
+  useEffect(() => {
+    fetchProducts();
+  }, [refresh]); // Add refresh dependency to trigger refetching when needed
+
+  // Handle category change
+  const handleCategoryChange = (category) => {
+    setSelectedCategory(category);
+    
+    if (category === 'all') {
+      setFilteredProducts(products);
+    } else {
+      const filtered = products.filter(product => 
+        product.category?.toLowerCase() === category.toLowerCase()
+      );
+      setFilteredProducts(filtered);
+    }
+  };
+
   // Check if a product is in the cart
   const isProductInCart = (productId) => {
-    return Array.isArray(cart) && cart.some(item => item.id === productId);
+    return Array.isArray(cart) && cart.some(item => 
+      item.id === productId || item._id === productId
+    );
   };
 
   // Get product quantity from cart
   const getProductQuantity = (productId) => {
     if (!Array.isArray(cart)) return 0;
-    const item = cart.find(item => item.id === productId);
+    const item = cart.find(item => 
+      item.id === productId || item._id === productId
+    );
     return item ? item.quantity : 0;
   };
 
   // Handle adding product to cart
   const handleAddToCart = (product) => {
-    addToCart(product);
+    // Ensure product has an id property (use _id if available)
+    const productToAdd = {
+      ...product,
+      id: product._id || product.id
+    };
+    
+    console.log('Adding product to cart:', productToAdd);
+    addToCart(productToAdd);
+  };
+
+  // Handle refresh
+  const handleRefresh = () => {
+    setRefresh(prev => prev + 1);
   };
 
   return (
@@ -149,8 +144,13 @@ const Shop = () => {
         
         {/* Right Side - Products Display */}
         <section className="products-section">
-          <h1>Our Products</h1>
           <div className="products-header">
+            <h1>Our Products</h1>
+            <button className="refresh-button" onClick={handleRefresh} disabled={loading}>
+              {loading ? 'Loading...' : 'Refresh Products'}
+            </button>
+          </div>
+          <div className="products-status">
             <span className="products-count">
               Showing <span id="product-count">{filteredProducts.length}</span> products
             </span>
@@ -165,65 +165,47 @@ const Shop = () => {
               <p>No products found in this category.</p>
             ) : (
               filteredProducts.map(product => {
-                const shortDescription = product.description.slice(0, 60) + '...';
-                const inCart = isProductInCart(product.id);
-                const quantity = getProductQuantity(product.id);
+                const shortDescription = product.description 
+                  ? (product.description.slice(0, 60) + '...') 
+                  : 'No description available';
+                const productId = product._id || product.id;
+                const inCart = isProductInCart(productId);
+                const quantity = getProductQuantity(productId);
                 
                 return (
                   <div 
-                    key={product.id} 
+                    key={productId} 
                     className={`product-card ${inCart ? 'in-cart' : ''}`}
-                    data-id={product.id}
+                    data-id={productId}
                   >
                     <div className="image-container">
-                      {/* Direct image without height constraints */}
                       <img 
-                        src={product.image}
-                        alt={product.title} 
+                        src={product.image || '/placeholder.png'}
+                        alt={product.title || product.name} 
                         className="product-image"
-                        style={{ width: '300px', height: '300px' }}
                         onError={(e) => {
-                          // If direct image fails, try using proxy
                           if (!e.target.dataset.tried) {
                             e.target.dataset.tried = '1';
-                            e.target.src = `https://wsrv.nl/?url=${encodeURIComponent(product.image)}&default=placeholder`;
-                          } 
-                          // If proxy fails, try another one
-                          else if (e.target.dataset.tried === '1') {
-                            e.target.dataset.tried = '2';
-                            e.target.src = `https://images.weserv.nl/?url=${encodeURIComponent(product.image)}`;
-                          }
-                          // Final fallback to placeholder
-                          else {
-                            // Use category placeholder
-                            if (product.category.includes('clothing')) {
-                              e.target.src = 'https://via.placeholder.com/600x800?text=Clothing';
-                            } else if (product.category.includes('jewelery') || product.category.includes('jewelry')) {
-                              e.target.src = 'https://via.placeholder.com/600x800?text=Jewelry';
-                            } else if (product.category.includes('electronics')) {
-                              e.target.src = 'https://via.placeholder.com/600x800?text=Electronics';
-                            } else {
-                              e.target.src = 'https://via.placeholder.com/600x800?text=Product';
-                            }
+                            e.target.src = '/placeholder.png';
                           }
                         }}
                       />
                     </div>
 
                     <div className="product-details">
-                      <div className="product-category">{product.category}</div>
-                      <h3 className="product-title">{product.title}</h3>
+                      <div className="product-category">{product.category || 'Product'}</div>
+                      <h3 className="product-title">{product.title || product.name}</h3>
                       <p className="product-description">
                         {shortDescription}
-                        <Link to={`/product/${product.id}`} className="read-more">read more</Link>
+                        <Link to={`/product/${productId}`} className="read-more">read more</Link>
                       </p>
-                      <div className="product-price">${product.price.toFixed(2)}</div>
+                      <div className="product-price">${(product.price || 0).toFixed(2)}</div>
                       
                       {inCart ? (
-                        <div className="quantity-controls" style={{ display: 'flex' }}>
+                        <div className="quantity-controls">
                           <button 
                             className="decrease-quantity"
-                            onClick={() => decrementQuantity(product.id)}
+                            onClick={() => decrementQuantity(productId)}
                           >−</button>
                           <input 
                             type="number" 
@@ -233,7 +215,7 @@ const Shop = () => {
                           />
                           <button 
                             className="increase-quantity"
-                            onClick={() => incrementQuantity(product.id)}
+                            onClick={() => incrementQuantity(productId)}
                           >+</button>
                         </div>
                       ) : (

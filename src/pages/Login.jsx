@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import Header from '../components/Header';
 import '../styles/Login.css';
 import '../styles/Header.css';
-import { loginUser } from '../services/api';
 
 const Login = () => {
+  const { loginUser, isAuthenticated } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -17,14 +18,11 @@ const Login = () => {
   const returnUrl = location.state?.from || localStorage.getItem('returnUrl') || '/';
 
   useEffect(() => {
-    // Check if user is already logged in
-    const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
-    const token = localStorage.getItem('token');
-    
-    if (isLoggedIn && token) {
+    // If already authenticated, redirect to return URL
+    if (isAuthenticated) {
       navigate(returnUrl);
     }
-  }, [navigate, returnUrl]);
+  }, [isAuthenticated, navigate, returnUrl]);
 
   const validateEmail = (email) => {
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -50,23 +48,18 @@ const Login = () => {
       setLoading(true);
       
       console.log('Attempting login with:', { email });
-      const response = await loginUser({ email, password });
+      const result = await loginUser(email, password);
       
-      if (response.data && response.data.token) {
-        console.log('Login successful, redirecting to:', returnUrl);
-        
-        // Clear any stored return URLs
-        localStorage.removeItem('returnUrl');
-        
-        // Redirect to the return URL
-        navigate(returnUrl);
-      } else {
-        console.error('Invalid response format:', response);
-        setError('Invalid response from server');
-      }
+      console.log('Login successful:', result);
+      
+      // Clear any stored return URLs
+      localStorage.removeItem('returnUrl');
+      
+      // Redirect to the return URL
+      navigate(returnUrl);
     } catch (err) {
       console.error('Login error:', err);
-      setError(err.response?.data?.message || 'Invalid email or password');
+      setError(err.message || 'Invalid email or password');
     } finally {
       setLoading(false);
     }

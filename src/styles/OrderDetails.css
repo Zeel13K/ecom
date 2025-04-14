@@ -416,6 +416,87 @@
   background-color: #e0e0e0;
 }
 
+/* Order Status */
+.order-status {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.status-updated {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+/* Status History Timeline */
+.status-history-section {
+  margin: 1.5rem;
+  padding: 1.5rem;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #eee;
+}
+
+.status-history-section h3 {
+  margin: 0 0 1.5rem;
+  color: #333;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.status-timeline {
+  position: relative;
+  padding-left: 2rem;
+}
+
+.status-timeline::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background-color: #e9ecef;
+}
+
+.status-timeline-item {
+  position: relative;
+  margin-bottom: 1.5rem;
+  padding-left: 1rem;
+}
+
+.status-timeline-item:last-child {
+  margin-bottom: 0;
+}
+
+.status-dot {
+  position: absolute;
+  left: -2rem;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background-color: #fff;
+  border: 2px solid #ccc;
+}
+
+.status-dot.processing { border-color: #ff9800; background-color: #fff3cd; }
+.status-dot.shipped { border-color: #03a9f4; background-color: #d1ecf1; }
+.status-dot.delivered { border-color: #4caf50; background-color: #d4edda; }
+.status-dot.cancelled { border-color: #f44336; background-color: #f8d7da; }
+
+.status-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.status-time {
+  color: #666;
+  font-size: 0.9rem;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .order-details-header {
@@ -448,5 +529,16 @@
   .contact-support-btn {
     width: 100%;
     justify-content: center;
+  }
+  
+  .status-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  
+  .status-history-section {
+    padding: 1rem;
+    margin: 1rem;
   }
 } 

@@ -70,19 +70,54 @@ body {
     display: flex;
     justify-content: space-between; /* Align left & right */
     align-items: center;
-    margin-bottom: 2rem;
-    border-bottom: 2px solid #ddd; /* Light border under header */
-    padding-bottom: 10px;
+    margin-bottom: 1rem;
+    border-bottom: none; /* Remove border since we now have a separate status area */
+    padding-bottom: 0;
 }
 
 .products-header h1 {
     font-size: 1.75rem;
     color: #111;
+    margin: 0;
+}
+
+/* Status area with count and filters */
+.products-status {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    border-bottom: 2px solid #ddd;
+    padding-bottom: 10px;
 }
 
 .products-count {
     color: #666;
     font-size: 0.95rem;
+}
+
+/* Refresh Button */
+.refresh-button {
+    background-color: #f8f9fa;
+    border: 1px solid #ddd;
+    color: #212529;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s ease;
+}
+
+.refresh-button:hover {
+    background-color: #e9ecef;
+    border-color: #ccc;
+}
+
+.refresh-button:disabled {
+    background-color: #e9ecef;
+    color: #6c757d;
+    cursor: not-allowed;
+    opacity: 0.7;
 }
 
 /* Products Grid */
@@ -208,10 +243,15 @@ body {
         padding: 0.5rem 1rem;
     }
 
-    .products-header {
+    .products-header, .products-status {
         flex-direction: column;
         align-items: center;
         text-align: center;
+        gap: 1rem;
+    }
+
+    .refresh-button {
+        margin-top: 0.5rem;
     }
 
     .products-grid {

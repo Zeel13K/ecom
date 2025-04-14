@@ -96,7 +96,8 @@ const getOrderById = async (req, res) => {
 
     const order = await Order.findById(req.params.id)
       .populate('user', 'name email')
-      .populate('orderItems.product', 'name price');
+      .populate('orderItems.product', 'name price')
+      .populate('statusHistory.updatedBy', 'name email');
 
     if (!order) {
       return res.status(404).json({ message: 'Order not found' });
@@ -105,6 +106,11 @@ const getOrderById = async (req, res) => {
     // Check if user has permission to view this order
     if (order.user._id.toString() !== req.user._id.toString() && !req.user.isAdmin) {
       return res.status(403).json({ message: 'Not authorized to view this order' });
+    }
+
+    // Sort status history by timestamp (newest first)
+    if (order.statusHistory && order.statusHistory.length > 0) {
+      order.statusHistory.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     }
 
     res.json(order);
@@ -191,7 +197,9 @@ const getMyOrders = async (req, res) => {
   try {
     const orders = await Order.find({ user: req.user._id })
       .sort({ createdAt: -1 })
-      .populate('orderItems.product', 'name price image');
+      .populate('orderItems.product', 'name price image')
+      .select('_id orderItems createdAt status isPaid isDelivered totalPrice shippingAddress statusUpdatedAt paymentMethod');
+
     res.json(orders);
   } catch (error) {
     console.error('Error fetching user orders:', error);
@@ -262,24 +270,52 @@ const updateOrderStatus = async (req, res) => {
       return res.status(400).json({ message: 'Cannot mark unpaid order as delivered' });
     }
 
-    // Update status
+    // Status is the same, no need to update
+    if (order.status === status.toLowerCase()) {
+      console.log(`Order ${order._id} status already set to ${status.toLowerCase()}`);
+      return res.json({
+        success: true,
+        message: 'Order status already set',
+        order: order
+      });
+    }
+
+    // Update status and timestamp
     order.status = status.toLowerCase();
     order.statusUpdatedAt = Date.now();
     
-    // Add to status history
-    order.statusHistory.push({
+    // Initialize statusHistory array if it doesn't exist
+    if (!order.statusHistory) {
+      order.statusHistory = [];
+    }
+
+    // Create status update entry
+    const statusUpdate = {
       status: status.toLowerCase(),
       timestamp: Date.now(),
-      updatedBy: req.user._id
-    });
+      updatedBy: req.user ? req.user._id : null,
+      note: req.body.note || `Status updated to ${status}`
+    };
+    
+    // Add to status history
+    order.statusHistory.push(statusUpdate);
 
+    // Save changes
     const updatedOrder = await order.save();
-    await updatedOrder.populate('statusHistory.updatedBy', 'name email');
+    
+    // Populate user information in status history if available
+    if (req.user && req.user._id) {
+      await updatedOrder.populate('statusHistory.updatedBy', 'name email');
+    }
 
+    console.log(`Order ${order._id} status updated to ${status.toLowerCase()}`);
+
+    // Return detailed response with full order information
     res.json({
       success: true,
       message: 'Order status updated successfully',
-      order: updatedOrder
+      order: updatedOrder,
+      statusUpdate: statusUpdate
     });
   } catch (error) {
     console.error('Error updating order status:', error);

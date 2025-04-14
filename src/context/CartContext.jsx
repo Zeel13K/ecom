@@ -7,14 +7,24 @@ export const CartProvider = ({ children }) => {
   const [cart, setCart] = useState([]);
 
   useEffect(() => {
-    const savedCart = localStorage.getItem("cart");
-    if (savedCart) {
-      setCart(JSON.parse(savedCart));
+    try {
+      const savedCart = localStorage.getItem("cart");
+      if (savedCart) {
+        setCart(JSON.parse(savedCart));
+      }
+    } catch (error) {
+      console.error("Error loading cart from localStorage:", error);
+      // Reset cart if there's an error
+      setCart([]);
     }
   }, []);
 
   useEffect(() => {
-    localStorage.setItem("cart", JSON.stringify(cart));
+    try {
+      localStorage.setItem("cart", JSON.stringify(cart));
+    } catch (error) {
+      console.error("Error saving cart to localStorage:", error);
+    }
   }, [cart]);
 
   const addToCart = (product) => {
@@ -60,9 +70,9 @@ export const CartProvider = ({ children }) => {
     try {
       console.log('CartContext: Creating order with data:', orderData);
       
-      // Check for authentication
-      const authToken = localStorage.getItem('authToken');
-      if (!authToken) {
+      // Check for authentication - use the correct token name
+      const token = localStorage.getItem('token');
+      if (!token) {
         console.error('CartContext: No auth token available for order creation');
         throw new Error('Authentication required. Please log in to place an order.');
       }
@@ -72,6 +82,10 @@ export const CartProvider = ({ children }) => {
         console.error('CartContext: No order items provided');
         throw new Error('No items in cart. Please add items before placing an order.');
       }
+
+      // Log the API URL and headers for debugging
+      console.log('CartContext: API URL for order creation:', import.meta.env.VITE_API_URL || 'Using default URL');
+      console.log('CartContext: Using token for authorization (first 10 chars):', token.substring(0, 10) + '...');
 
       // Make API call to create order
       console.log('CartContext: Sending order to API');
@@ -87,13 +101,27 @@ export const CartProvider = ({ children }) => {
     } catch (error) {
       console.error('CartContext: Error creating order:', error);
       
-      // Handle specific error cases
+      // Enhanced error logging
       if (error.response) {
-        console.error('CartContext: Server error response:', error.response.data);
-        throw error; // Re-throw to let the component handle it
+        console.error('CartContext: Server error response:', {
+          status: error.response.status,
+          statusText: error.response.statusText,
+          data: error.response.data,
+          headers: error.response.headers
+        });
+      } else if (error.request) {
+        console.error('CartContext: No response received. Request details:', {
+          method: error.request.method,
+          url: error.request.url,
+          responseType: error.request.responseType
+        });
+      } else {
+        console.error('CartContext: Error setting up request:', error.message);
       }
       
-      throw error; // Re-throw any other errors
+      // Re-throw the error with more context
+      const errorMessage = error.response?.data?.message || error.message || 'Unknown error creating order';
+      throw new Error(`Order creation failed: ${errorMessage}`);
     }
   };
 

@@ -1,51 +1,48 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import '../../styles/Admin.css';
 
 const AdminLayout = ({ children, activeTab }) => {
   const navigate = useNavigate();
-  const [adminEmail, setAdminEmail] = useState('');
+  const { currentUser, isAdminLoggedIn, logoutUser } = useAuth();
   const [adminName, setAdminName] = useState('Administrator');
+  const [adminEmail, setAdminEmail] = useState('');
   const [unreadMessages, setUnreadMessages] = useState(0);
 
   useEffect(() => {
-    // Check if admin is logged in
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    const isAdmin = user.isAdmin === true;
-    const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true' || localStorage.getItem('adminLoggedIn') === 'true';
-    
-    if (!isLoggedIn || !isAdmin) {
-      console.log('Not authenticated as admin, redirecting to login from layout');
-      // Store the current path to redirect back after login
+    // Check if user is authenticated as admin using our new helper
+    if (!isAdminLoggedIn()) {
+      console.log('Not authenticated as admin, redirecting to admin login');
       localStorage.setItem('adminReturnUrl', window.location.pathname);
       navigate('/admin/login');
-    } else {
-      // Get admin email
-      const email = localStorage.getItem('adminEmail') || user.email;
-      setAdminEmail(email || 'admin@example.com');
-      
-      // Get admin name from user or email
-      if (user.name) {
-        setAdminName(user.name);
-      } else if (email) {
-        const name = email.split('@')[0];
-        setAdminName(name.charAt(0).toUpperCase() + name.slice(1));
-      }
-      
-      // Check for unread messages
-      try {
-        const messages = JSON.parse(localStorage.getItem('contactMessages') || '[]');
-        const unread = messages.filter(msg => msg.status === 'unread').length;
-        setUnreadMessages(unread);
-      } catch (error) {
-        console.error('Error checking unread messages:', error);
-      }
+      return;
     }
-  }, [navigate]);
+
+    // Set admin information
+    if (currentUser.name) {
+      setAdminName(currentUser.name);
+    } else if (currentUser.firstName && currentUser.lastName) {
+      setAdminName(`${currentUser.firstName} ${currentUser.lastName}`);
+    }
+    
+    setAdminEmail(currentUser.email || 'admin@example.com');
+    
+    // Check for unread messages
+    try {
+      const messages = JSON.parse(localStorage.getItem('contactMessages') || '[]');
+      const unread = messages.filter(msg => msg.status === 'unread').length;
+      setUnreadMessages(unread);
+    } catch (error) {
+      console.error('Error checking unread messages:', error);
+    }
+  }, [navigate, currentUser, isAdminLoggedIn]);
 
   const handleLogout = () => {
-    localStorage.removeItem('adminLoggedIn');
-    localStorage.removeItem('adminEmail');
+    // Use the main logout function to ensure consistent logout behavior
+    logoutUser();
+    
+    // Navigate to admin login
     navigate('/admin/login');
   };
 

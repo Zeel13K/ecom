@@ -137,6 +137,7 @@
     margin-bottom: 0.5rem;
     font-size: 0.9rem;
     color: #333;
+    font-weight: 500;
 }
 
 /* Special class for input with proper padding */
@@ -159,7 +160,7 @@
     left: 1rem;
     top: 50%;
     transform: translateY(-50%);
-    color: #aaa;
+    color: #6c757d;
     z-index: 1;
 }
 
@@ -173,21 +174,28 @@
     z-index: 1;
     background-color: transparent;
     padding: 0 5px;
+    color: #6c757d;
+    transition: color 0.2s ease;
+}
+
+.input-with-icon .toggle-password:hover {
+    color: #000;
 }
 
 .input-with-icon input {
     width: 100%;
-    padding: 0.875rem 1rem;
-    border: 1px solid #ddd;
-    border-radius: 6px;
+    padding: 1rem 1rem;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
     font-size: 0.95rem;
-    transition: border-color 0.3s ease;
+    transition: all 0.3s ease;
     position: relative;
 }
 
 .input-with-icon input:focus {
     outline: none;
-    border-color: #333;
+    border-color: #000;
+    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.1);
 }
 
 /* Form Options */
@@ -220,35 +228,118 @@
 
 .forgot-password {
     font-size: 0.9rem;
-}
-
-.forgot-password a {
     color: #000;
     text-decoration: none;
     transition: color 0.2s ease;
+    font-weight: 500;
 }
 
-.forgot-password a:hover {
+.forgot-password:hover {
     color: #333;
     text-decoration: underline;
 }
 
-/* Submit Button */
-.auth-submit {
+/* Auth Button - Update for better design */
+.auth-button {
     width: 100%;
-    padding: 0.875rem;
-    background-color: #000;
+    padding: 1rem;
+    background-color: #000; /* Black color */
     color: white;
     border: none;
-    border-radius: 6px;
+    border-radius: 8px;
     font-size: 1rem;
-    font-weight: 500;
+    font-weight: 600;
     cursor: pointer;
-    transition: background-color 0.3s ease;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    margin-bottom: 1.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
-.auth-submit:hover {
+.auth-button:hover {
     background-color: #333;
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+    transform: translateY(-2px);
+}
+
+.auth-button:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(74, 108, 247, 0.2);
+}
+
+.auth-button:disabled {
+    background-color: #a0a0a0;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+}
+
+/* Auth Links - Improve the register/login link at bottom */
+.auth-links {
+    text-align: center;
+    margin-top: 1rem;
+    font-size: 0.95rem;
+    color: #555;
+}
+
+.auth-links a {
+    color: #000;
+    font-weight: 600;
+    text-decoration: none;
+    transition: color 0.2s ease;
+    margin-left: 0.3rem;
+}
+
+.auth-links a:hover {
+    color: #333;
+    text-decoration: underline;
+}
+
+/* Auth Error - Improve error messaging */
+.auth-error {
+    background-color: #fff0f0;
+    border: 1px solid #ffd1d1;
+    color: #d93025;
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    margin-bottom: 1.5rem;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+}
+
+.auth-error::before {
+    content: "⚠️";
+    margin-right: 0.5rem;
+    font-size: 1rem;
+}
+
+/* Auth Success Message */
+.auth-success {
+    background-color: #f0fff4;
+    border: 1px solid #c6f6d5;
+    color: #2f855a;
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    margin-bottom: 1.5rem;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+}
+
+.auth-success::before {
+    content: "✅";
+    margin-right: 0.5rem;
+    font-size: 1rem;
+}
+
+/* Input validation error */
+.input-error {
+    color: #d93025;
+    font-size: 0.8rem;
+    margin-top: 0.3rem;
+    display: block;
 }
 
 /* Auth Divider */
@@ -346,18 +437,6 @@
     background-color: #e8f5e9;
     color: #2e7d32;
     border: 1px solid #a5d6a7;
-}
-
-.input-error {
-    color: #d32f2f;
-    font-size: 12px;
-    margin-top: 4px;
-    display: block;
-}
-
-.auth-submit:disabled {
-    background-color: #cccccc;
-    cursor: not-allowed;
 }
 
 .forgot-password {

@@ -16,39 +16,153 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     // Check if admin is logged in
-    const isLoggedIn = localStorage.getItem('adminLoggedIn') === 'true';
-    if (!isLoggedIn) {
+    const isAdminLoggedIn = localStorage.getItem('adminLoggedIn') === 'true';
+    const hasAdminToken = !!localStorage.getItem('adminToken');
+    
+    console.log('Admin Dashboard - Auth check:', { isAdminLoggedIn, hasAdminToken });
+    
+    if (!isAdminLoggedIn || !hasAdminToken) {
+      console.log('Admin Dashboard - Not authenticated as admin, redirecting to login');
       navigate('/admin/login');
       return;
     }
     
-    // Load dashboard stats - in a real app, this would be from API
-    // For this demo, we'll get order count from localStorage
-    try {
-      const allUsers = JSON.parse(localStorage.getItem('user') || '{}');
-      const orders = allUsers.orders || [];
+    // For development mode, create test data if needed
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Development mode: Setting up test data for admin dashboard');
       
-      // Calculate stats
-      const pendingOrders = orders.filter(order => 
-        order.status === 'processing' || order.status === 'pending'
-      ).length;
-      
-      const revenue = orders.reduce((sum, order) => sum + (order.total || 0), 0);
-      
-      // Get messages stats
-      const messages = JSON.parse(localStorage.getItem('contactMessages') || '[]');
-      const unreadMessages = messages.filter(msg => msg.status === 'unread').length;
-      
-      setStats({
-        pendingOrders: pendingOrders,
-        totalOrders: orders.length,
-        totalProducts: 12, // Mock data
-        revenue: revenue,
-        totalMessages: messages.length,
-        unreadMessages: unreadMessages
-      });
-    } catch (error) {
-      console.error('Error loading admin stats:', error);
+      // Create test orders if none exist
+      try {
+        const user = JSON.parse(localStorage.getItem('user') || 'null');
+        if (!user) {
+          throw new Error('No user found in localStorage');
+        }
+        
+        let orders = JSON.parse(localStorage.getItem('orders') || '[]');
+        
+        // If no orders, create some test orders
+        if (orders.length === 0) {
+          console.log('Creating test orders for admin dashboard');
+          
+          const orderStatuses = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
+          
+          // Create 10 test orders with different statuses
+          const testOrders = Array(10).fill().map((_, i) => ({
+            _id: `test-order-${Date.now()}-${i}`,
+            orderNumber: `ORD-${Math.floor(Math.random() * 10000)}`,
+            user: user._id,
+            orderItems: [
+              {
+                name: 'Wireless Headphones',
+                quantity: 1,
+                image: 'https://fakestoreapi.com/img/81fPKd-2AYL._AC_SL1500_.jpg',
+                price: 99.99,
+                product: 'mock-1'
+              },
+              {
+                name: 'Smart Watch',
+                quantity: 2,
+                image: 'https://fakestoreapi.com/img/71pWzhdJNwL._AC_UL640_QL65_ML3_.jpg',
+                price: 199.99,
+                product: 'mock-2'
+              }
+            ],
+            shippingAddress: {
+              address: '123 Main St',
+              city: 'Anytown',
+              postalCode: '12345',
+              country: 'USA'
+            },
+            paymentMethod: 'Credit Card',
+            paymentResult: {
+              id: `pay-${Date.now()}-${i}`,
+              status: 'completed',
+              update_time: new Date().toISOString(),
+              email_address: user.email
+            },
+            taxPrice: 30.00,
+            shippingPrice: 10.00,
+            totalPrice: 509.98,
+            isPaid: true,
+            paidAt: new Date().toISOString(),
+            status: orderStatuses[i % orderStatuses.length],
+            createdAt: new Date(Date.now() - i * 86400000).toISOString(),
+            updatedAt: new Date().toISOString()
+          }));
+          
+          orders = [...testOrders];
+          localStorage.setItem('orders', JSON.stringify(orders));
+        }
+        
+        // Calculate stats
+        const pendingOrders = orders.filter(order => 
+          order.status === 'processing' || order.status === 'pending'
+        ).length;
+        
+        const revenue = orders.reduce((sum, order) => sum + (order.totalPrice || 0), 0);
+        
+        // Create some test messages if none exist
+        let messages = JSON.parse(localStorage.getItem('contactMessages') || '[]');
+        
+        if (messages.length === 0) {
+          console.log('Creating test messages for admin dashboard');
+          
+          const testMessages = Array(5).fill().map((_, i) => ({
+            id: `msg-${Date.now()}-${i}`,
+            name: `Test User ${i+1}`,
+            email: `test${i+1}@example.com`,
+            subject: `Test Message ${i+1}`,
+            message: `This is a test message ${i+1} for the admin dashboard.`,
+            status: i < 3 ? 'unread' : 'read',
+            createdAt: new Date(Date.now() - i * 86400000).toISOString()
+          }));
+          
+          messages = [...testMessages];
+          localStorage.setItem('contactMessages', JSON.stringify(messages));
+        }
+        
+        const unreadMessages = messages.filter(msg => msg.status === 'unread').length;
+        
+        // Update stats
+        setStats({
+          pendingOrders: pendingOrders,
+          totalOrders: orders.length,
+          totalProducts: 12, // Mock data
+          revenue: revenue,
+          totalMessages: messages.length,
+          unreadMessages: unreadMessages
+        });
+      } catch (error) {
+        console.error('Error creating test data:', error);
+      }
+    } else {
+      // Load dashboard stats from localStorage for production
+      try {
+        const allUsers = JSON.parse(localStorage.getItem('user') || '{}');
+        const orders = allUsers.orders || [];
+        
+        // Calculate stats
+        const pendingOrders = orders.filter(order => 
+          order.status === 'processing' || order.status === 'pending'
+        ).length;
+        
+        const revenue = orders.reduce((sum, order) => sum + (order.total || 0), 0);
+        
+        // Get messages stats
+        const messages = JSON.parse(localStorage.getItem('contactMessages') || '[]');
+        const unreadMessages = messages.filter(msg => msg.status === 'unread').length;
+        
+        setStats({
+          pendingOrders: pendingOrders,
+          totalOrders: orders.length,
+          totalProducts: 12, // Mock data
+          revenue: revenue,
+          totalMessages: messages.length,
+          unreadMessages: unreadMessages
+        });
+      } catch (error) {
+        console.error('Error loading admin stats:', error);
+      }
     }
   }, [navigate]);
 

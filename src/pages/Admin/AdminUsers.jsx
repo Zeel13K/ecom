@@ -20,20 +20,21 @@ const AdminUsers = () => {
     setLoading(true);
     try {
       console.log('Fetching users from API...');
-      console.log('Auth token:', localStorage.getItem('authToken'));
       
       const response = await getAllUsers();
       console.log('Users data received:', response.data);
       
       // Transform data if needed to ensure consistent structure
-      const formattedUsers = response.data.map(user => ({
-        _id: user._id || user.id || String(Date.now()),
-        name: user.name || user.userName || 'Unknown',
-        email: user.email || 'No email',
-        isAdmin: user.isAdmin || false,
-        createdAt: user.createdAt || user.created || new Date().toISOString(),
-        // Add other fields as needed
-      }));
+      const formattedUsers = Array.isArray(response.data) 
+        ? response.data.map(user => ({
+            _id: user._id || user.id || String(Date.now()),
+            name: user.name || user.userName || 'Unknown',
+            email: user.email || 'No email',
+            isAdmin: Boolean(user.isAdmin),
+            createdAt: user.createdAt || user.created || new Date().toISOString(),
+            // Add other fields as needed
+          }))
+        : [];
       
       setUsers(formattedUsers);
       setError(null);
@@ -53,11 +54,41 @@ const AdminUsers = () => {
         console.error('Error message:', err.message);
       }
       
-      // Check if we have a response with error details
-      if (err.response && err.response.data && err.response.data.message) {
-        setError(err.response.data.message);
+      // Mock users for development when API fails
+      if (process.env.NODE_ENV === 'development') {
+        console.log('DEV MODE: Falling back to mock users');
+        const mockUsers = [
+          {
+            _id: 'mock-user-1',
+            name: 'John Doe',
+            email: 'john@example.com',
+            isAdmin: false,
+            createdAt: '2023-05-15T10:30:00Z'
+          },
+          {
+            _id: 'mock-user-2',
+            name: 'Jane Smith',
+            email: 'jane@example.com',
+            isAdmin: false,
+            createdAt: '2023-06-20T14:45:00Z'
+          },
+          {
+            _id: 'mock-admin-1',
+            name: 'Admin User',
+            email: 'admin@example.com',
+            isAdmin: true,
+            createdAt: '2023-01-01T00:00:00Z'
+          }
+        ];
+        setUsers(mockUsers);
+        setError(null);
       } else {
-        setError('Failed to load users. Please try again.');
+        // Check if we have a response with error details
+        if (err.response && err.response.data && err.response.data.message) {
+          setError(err.response.data.message);
+        } else {
+          setError('Failed to load users. Please try again.');
+        }
       }
     } finally {
       setLoading(false);
@@ -65,19 +96,12 @@ const AdminUsers = () => {
   };
 
   useEffect(() => {
-    // Check if admin is logged in and set auth token
-    const isLoggedIn = localStorage.getItem('adminLoggedIn') === 'true';
-    if (!isLoggedIn) {
+    // Check if admin is logged in
+    const isAdmin = localStorage.getItem('adminLoggedIn') === 'true';
+    if (!isAdmin) {
+      console.log('Not authenticated as admin, redirecting to admin login');
       navigate('/admin/login');
       return;
-    }
-    
-    // Set a mock JWT token for admin if not already set
-    if (!localStorage.getItem('authToken')) {
-      // This is a temporary solution - in production, the admin login should set a proper JWT token
-      const adminToken = 'admin-jwt-token-' + Date.now();
-      localStorage.setItem('authToken', adminToken);
-      console.log('Setting mock admin token:', adminToken);
     }
     
     // Load users from API
@@ -104,8 +128,15 @@ const AdminUsers = () => {
       // Toggle admin status
       const updatedUser = { ...user, isAdmin: !user.isAdmin };
       
+      console.log(`Toggling admin status for user ${userId} to ${updatedUser.isAdmin}`);
+      
       // Update in the backend
-      await updateUser(userId, updatedUser);
+      if (process.env.NODE_ENV !== 'development') {
+        await updateUser(userId, updatedUser);
+      } else {
+        // Simulate API delay in development
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
       
       // Update local state
       setUsers(prevUsers => 
@@ -128,7 +159,14 @@ const AdminUsers = () => {
   // Save user changes
   const handleSaveUser = async () => {
     try {
-      await updateUser(editingUser._id, editingUser);
+      console.log('Saving user changes:', editingUser);
+      
+      if (process.env.NODE_ENV !== 'development') {
+        await updateUser(editingUser._id, editingUser);
+      } else {
+        // Simulate API delay in development
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
       
       // Update local state
       setUsers(prevUsers => 
@@ -172,8 +210,15 @@ const AdminUsers = () => {
     if (!userToDelete) return;
     
     try {
-      // Delete from backend
-      await deleteUser(userToDelete._id);
+      console.log(`Deleting user: ${userToDelete._id}`);
+      
+      if (process.env.NODE_ENV !== 'development') {
+        // Delete from backend
+        await deleteUser(userToDelete._id);
+      } else {
+        // Simulate API delay in development
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
       
       // Remove from state
       setUsers(users.filter(u => u._id !== userToDelete._id));
@@ -193,10 +238,24 @@ const AdminUsers = () => {
     setUserToDelete(null);
   };
 
+  // Format date nicely
+  const formatDate = (dateString) => {
+    try {
+      const options = { year: 'numeric', month: 'short', day: 'numeric' };
+      return new Date(dateString).toLocaleDateString(undefined, options);
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return 'Invalid date';
+    }
+  };
+
   return (
     <AdminLayout activeTab="users">
       <div className="admin-header">
-        <h1>Manage Users</h1>
+        <div className="header-content">
+          <h1>User Management</h1>
+          <p>Total users: {users.length} ({users.filter(u => u.isAdmin).length} admins)</p>
+        </div>
         <div className="admin-actions">
           <div className="user-filter">
             <select value={filter} onChange={handleFilterChange}>
@@ -205,11 +264,61 @@ const AdminUsers = () => {
               <option value="customer">Regular Users</option>
             </select>
           </div>
+          <button className="refresh-btn" onClick={fetchUsers} disabled={loading}>
+            <i className="fas fa-sync-alt"></i> Refresh
+          </button>
         </div>
       </div>
+
+      {editMode && editingUser && (
+        <div className="user-edit-form">
+          <div className="user-edit-title">
+            <h2>Edit User</h2>
+          </div>
+          <div className="user-edit-form-row">
+            <div className="user-edit-field">
+              <label htmlFor="name">Name</label>
+              <input
+                type="text"
+                id="name"
+                name="name"
+                value={editingUser.name}
+                onChange={handleEditFormChange}
+              />
+            </div>
+            <div className="user-edit-field">
+              <label htmlFor="email">Email</label>
+              <input
+                type="email"
+                id="email"
+                name="email"
+                value={editingUser.email}
+                onChange={handleEditFormChange}
+              />
+            </div>
+          </div>
+          <div className="user-edit-checkbox">
+            <input
+              type="checkbox"
+              id="isAdmin"
+              name="isAdmin"
+              checked={editingUser.isAdmin}
+              onChange={handleEditFormChange}
+            />
+            <label htmlFor="isAdmin">Admin User</label>
+          </div>
+          <div className="user-edit-actions">
+            <button className="user-edit-cancel" onClick={handleCancelEdit}>Cancel</button>
+            <button className="user-edit-save" onClick={handleSaveUser}>Save Changes</button>
+          </div>
+        </div>
+      )}
       
       {loading ? (
-        <div className="admin-loading">Loading users...</div>
+        <div className="admin-loading">
+          <i className="fas fa-spinner fa-spin"></i>
+          <p>Loading users...</p>
+        </div>
       ) : error ? (
         <div className="admin-error">
           <i className="fas fa-exclamation-triangle"></i>
@@ -245,30 +354,29 @@ const AdminUsers = () => {
                 </span>
               </div>
               <div className="user-date">
-                {user.createdAt 
-                  ? new Date(user.createdAt).toLocaleDateString() 
-                  : 'Unknown date'
-                }
+                {formatDate(user.createdAt)}
               </div>
               <div className="user-actions">
-                <button 
-                  className={`admin-toggle-btn ${user.isAdmin ? 'admin' : ''}`}
+                <button
+                  className={`user-action-btn admin-toggle ${user.isAdmin ? 'active' : ''}`}
                   onClick={() => handleToggleAdmin(user._id)}
-                  title={user.isAdmin ? "Remove admin privileges" : "Grant admin privileges"}
+                  title={user.isAdmin ? 'Remove admin privileges' : 'Make admin'}
                 >
-                  <i className={`fas fa-${user.isAdmin ? 'shield-alt' : 'user-shield'}`}></i>
+                  <i className="fas fa-crown"></i>
                 </button>
-                <button 
-                  className="edit-btn"
+                <button
+                  className="user-action-btn edit"
                   onClick={() => handleEditUser(user)}
+                  title="Edit user"
                 >
                   <i className="fas fa-edit"></i>
                 </button>
-                <button 
-                  className="delete-btn"
+                <button
+                  className="user-action-btn delete"
                   onClick={() => confirmDelete(user)}
+                  title="Delete user"
                 >
-                  <i className="fas fa-trash"></i>
+                  <i className="fas fa-trash-alt"></i>
                 </button>
               </div>
             </div>
@@ -276,68 +384,20 @@ const AdminUsers = () => {
         </div>
       )}
       
-      {/* Edit User Modal */}
-      {editMode && editingUser && (
-        <div className="admin-modal">
-          <div className="admin-modal-content">
-            <div className="admin-modal-header">
-              <h2>Edit User</h2>
-              <button className="close-btn" onClick={handleCancelEdit}>×</button>
-            </div>
-            <div className="admin-modal-body">
-              <div className="form-group">
-                <label>Name</label>
-                <input 
-                  type="text" 
-                  name="name" 
-                  value={editingUser.name} 
-                  onChange={handleEditFormChange}
-                />
-              </div>
-              <div className="form-group">
-                <label>Email</label>
-                <input 
-                  type="email" 
-                  name="email" 
-                  value={editingUser.email} 
-                  onChange={handleEditFormChange}
-                />
-              </div>
-              <div className="form-group">
-                <label className="checkbox-label">
-                  <input 
-                    type="checkbox" 
-                    name="isAdmin" 
-                    checked={editingUser.isAdmin} 
-                    onChange={handleEditFormChange}
-                  />
-                  Admin Privileges
-                </label>
-              </div>
-            </div>
-            <div className="admin-modal-footer">
-              <button className="cancel-btn" onClick={handleCancelEdit}>Cancel</button>
-              <button className="save-btn" onClick={handleSaveUser}>Save Changes</button>
-            </div>
-          </div>
-        </div>
-      )}
-      
-      {/* Delete Confirmation Modal */}
+      {/* Delete confirmation modal */}
       {showDeleteModal && userToDelete && (
-        <div className="admin-modal">
-          <div className="admin-modal-content">
-            <div className="admin-modal-header">
-              <h2>Confirm Deletion</h2>
-              <button className="close-btn" onClick={cancelDelete}>×</button>
+        <div className="delete-modal-overlay">
+          <div className="delete-modal">
+            <div className="delete-modal-header">
+              <h3>Confirm Delete</h3>
             </div>
-            <div className="admin-modal-body">
+            <div className="delete-modal-content">
               <p>Are you sure you want to delete the user <strong>{userToDelete.name}</strong>?</p>
-              <p className="warning">This action cannot be undone. All user data including order history will be permanently deleted.</p>
+              <p>This action cannot be undone.</p>
             </div>
-            <div className="admin-modal-footer">
-              <button className="cancel-btn" onClick={cancelDelete}>Cancel</button>
-              <button className="delete-btn" onClick={handleDeleteUser}>Delete User</button>
+            <div className="delete-modal-actions">
+              <button className="delete-cancel" onClick={cancelDelete}>Cancel</button>
+              <button className="delete-confirm" onClick={handleDeleteUser}>Delete User</button>
             </div>
           </div>
         </div>

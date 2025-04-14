@@ -4,7 +4,7 @@ import Shop from './pages/Shop';
 import Home from './pages/Home';
 import About from './pages/About';
 import Contact from './pages/Contact';
-import Login from './pages/Login';
+import SimpleLogin from './pages/SimpleLogin';
 import SignUp from './pages/SignUp';
 import ForgotPassword from './pages/ForgotPassword';
 import ProductDetail from './pages/ProductDetail';
@@ -34,7 +34,7 @@ function App() {
       <Route path="/shop" element={<Shop />} />
       <Route path="/about" element={<About />} />
       <Route path="/contact" element={<Contact />} />
-      <Route path="/login" element={<Login />} />
+      <Route path="/login" element={<SimpleLogin />} />
       <Route path="/signup" element={<SignUp />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/product/:id" element={<ProductDetail />} />
@@ -48,14 +48,14 @@ function App() {
       
       {/* Admin Routes */}
       <Route path="/admin/login" element={<AdminLogin />} />
-      <Route path="/admin/dashboard" element={<PrivateRoute><AdminDashboard /></PrivateRoute>} />
-      <Route path="/admin/orders" element={<PrivateRoute><AdminOrders /></PrivateRoute>} />
-      <Route path="/admin/orders/:id" element={<PrivateRoute><AdminOrderDetails /></PrivateRoute>} />
-      <Route path="/admin/products" element={<PrivateRoute><AdminProducts /></PrivateRoute>} />
-      <Route path="/admin/users" element={<PrivateRoute><AdminUsers /></PrivateRoute>} />
-      <Route path="/admin/products/create" element={<PrivateRoute><AdminProductCreate /></PrivateRoute>} />
-      <Route path="/admin/products/edit/:id" element={<PrivateRoute><AdminProductEdit /></PrivateRoute>} />
-      <Route path="/admin/messages" element={<PrivateRoute><AdminMessages /></PrivateRoute>} />
+      <Route path="/admin/dashboard" element={<PrivateRoute requireAdmin={true}><AdminDashboard /></PrivateRoute>} />
+      <Route path="/admin/orders" element={<PrivateRoute requireAdmin={true}><AdminOrders /></PrivateRoute>} />
+      <Route path="/admin/orders/:id" element={<PrivateRoute requireAdmin={true}><AdminOrderDetails /></PrivateRoute>} />
+      <Route path="/admin/products" element={<PrivateRoute requireAdmin={true}><AdminProducts /></PrivateRoute>} />
+      <Route path="/admin/users" element={<PrivateRoute requireAdmin={true}><AdminUsers /></PrivateRoute>} />
+      <Route path="/admin/products/create" element={<PrivateRoute requireAdmin={true}><AdminProductCreate /></PrivateRoute>} />
+      <Route path="/admin/products/edit/:id" element={<PrivateRoute requireAdmin={true}><AdminProductEdit /></PrivateRoute>} />
+      <Route path="/admin/messages" element={<PrivateRoute requireAdmin={true}><AdminMessages /></PrivateRoute>} />
     </Routes>
   );
 }

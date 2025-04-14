@@ -18,7 +18,7 @@ const app = express();
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
     ? 'https://your-production-domain.com' 
-    : 'http://localhost:3000',
+    : '*', // Allow all origins in development
   credentials: true
 }));
 
